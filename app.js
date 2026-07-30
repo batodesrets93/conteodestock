@@ -795,7 +795,7 @@ function buildProductListHtml(filtered) {
             </div>
             <div class="helado-field">
               <span class="helado-label">Peso prom. (kg)</span>
-              <input type="text" inputmode="decimal" class="helado-input" data-pesoprom="${p.code}" value="${detail.pesoProm ? formatQty(detail.pesoProm) : ''}" placeholder="0">
+              <input type="text" inputmode="decimal" class="helado-input" data-pesoprom="${p.code}" value="${detail.pesoProm ? formatQty(detail.pesoProm) : ''}" placeholder="Ej: 3,4">
             </div>
             <div class="helado-eq">= ${formatQty(subtotal)} kg</div>
             <div class="helado-field">
@@ -970,7 +970,7 @@ function attachCountRowHandlers() {
     btn.onclick = () => changeQty(btn.getAttribute('data-plus'), 1);
   });
   document.querySelectorAll('[data-qty]').forEach(input => {
-    input.onchange = (e) => setQty(input.getAttribute('data-qty'), e.target.value);
+    input.onchange = (e) => setQty(input.getAttribute('data-qty'), e.target.value, e.target);
     input.onfocus = (e) => e.target.select();
   });
   document.querySelectorAll('[data-note]').forEach(input => {
@@ -985,11 +985,11 @@ function attachCountRowHandlers() {
     input.onfocus = (e) => e.target.select();
   });
   document.querySelectorAll('[data-pesoprom]').forEach(input => {
-    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-pesoprom'), 'pesoProm', e.target.value);
+    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-pesoprom'), 'pesoProm', e.target.value, e.target);
     input.onfocus = (e) => e.target.select();
   });
   document.querySelectorAll('[data-manualkg]').forEach(input => {
-    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-manualkg'), 'manualKg', e.target.value);
+    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-manualkg'), 'manualKg', e.target.value, e.target);
     input.onfocus = (e) => e.target.select();
   });
   document.querySelectorAll('[data-cajas]').forEach(input => {
@@ -1006,12 +1006,40 @@ function attachCountRowHandlers() {
   });
 }
 
-function updateHeladoRow(code, field, rawValue) {
+// Umbrales usados para detectar que alguien anotó el peso tal como lo
+// muestra la balanza (gramos, ej. 3484) en un campo que espera kg (3,484).
+// Ninguna vasqueta pesa 30kg y es rarísimo tener 200kg sueltos de un mismo
+// sabor, así que un valor por encima de eso casi siempre es "faltó la coma".
+const PESO_PROM_MAX_KG = 30;
+const MANUAL_KG_MAX_KG = 200;
+
+// Si el valor parece estar en gramos (balanza) en vez de kg, ofrece
+// corregirlo dividiendo por 1000. Acepta = usa el valor corregido;
+// Cancelar = respeta lo que la persona tipeó, tal cual.
+function confirmGramsToKg(value, campoLabel) {
+  const corregido = Math.round((value / 1000) * 1000) / 1000;
+  const ok = confirm(
+    `Anotaste ${formatQty(value)} kg en ${campoLabel}, un valor muy alto.\n\n` +
+    `¿Tipeaste el número de la balanza en gramos? Si es así, tocá Aceptar para usar ${formatQty(corregido)} kg.\n\n` +
+    `Cancelar = mantener ${formatQty(value)} kg tal cual lo escribiste.`
+  );
+  return ok ? corregido : value;
+}
+
+function updateHeladoRow(code, field, rawValue, inputEl) {
   const details = activeHeladoDetails();
   const current = details[code] || { vasquetas: 0, pesoProm: 0, manualKg: 0 };
-  const value = field === 'vasquetas'
+  let value = field === 'vasquetas'
     ? Math.max(0, Math.round(parseQtyInput(rawValue)))
     : Math.max(0, parseQtyInput(rawValue));
+
+  if (field === 'pesoProm' && value > PESO_PROM_MAX_KG) {
+    value = confirmGramsToKg(value, 'el peso promedio de la vasqueta');
+  } else if (field === 'manualKg' && value > MANUAL_KG_MAX_KG) {
+    value = confirmGramsToKg(value, 'el kg manual');
+  }
+  if (inputEl) inputEl.value = formatQty(value);
+
   current[field] = value;
   details[code] = current;
 
@@ -1086,10 +1114,17 @@ function changeQty(code, delta) {
   updateRowUI(code, next);
 }
 
-function setQty(code, value) {
+function setQty(code, value, inputEl) {
   const counts = activeCounts();
   const prev = Number(counts[code] || 0);
-  const n = parseQtyInput(value);
+  let n = parseQtyInput(value);
+
+  const product = getBaseProduct(code);
+  if (product && String(product.unit).toLowerCase() === 'kg' && n > MANUAL_KG_MAX_KG) {
+    n = confirmGramsToKg(n, `"${product.name}"`);
+  }
+  if (inputEl) inputEl.value = formatQty(n);
+
   pushUndo(code, prev);
   counts[code] = n;
   saveCurrent();
