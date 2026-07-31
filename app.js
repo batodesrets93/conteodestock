@@ -298,6 +298,49 @@ function isBoxCategory(category) {
   return category !== 'HELADO (KG)' && !ICE_POP_CATEGORIES.includes(category);
 }
 
+// Detecta el peso/volumen por unidad (bolsa/cubo/botella) a partir del nombre
+// del producto, ej. "BESAME MUCHO 5Kg" -> 5 (kg/ud), "SACCHETTO 500G" -> 0.5 (kg/ud).
+// Solo aplica si la unidad declarada del producto es 'Kg' o 'Litro': para esos
+// casos, en las categorías de "caja" (Cant. cajas / Ud x caja / Ud sueltas) cada
+// unidad contada NO pesa/mide 1 kg/L sino el valor detectado en el nombre, así
+// que el total se calcula como (cajas × ud x caja + sueltas) × peso_detectado.
+// Si la unidad es 'Unidad' (ingresado por paquete/botella) no se aplica nada.
+const UNIT_WEIGHT_REGEX = /(\d+(?:[.,]\d+)?)\s*(kgs?|grs?|g|lts?|ml|l)\b/gi;
+
+function detectUnitWeight(name, unit) {
+  if (!name || !unit) return null;
+  const u = String(unit).trim().toLowerCase();
+  if (u !== 'kg' && u !== 'litro') return null;
+
+  UNIT_WEIGHT_REGEX.lastIndex = 0;
+  let match;
+  let last = null;
+  while ((match = UNIT_WEIGHT_REGEX.exec(name)) !== null) {
+    last = match; // nos quedamos con la última coincidencia del nombre
+  }
+  if (!last) return null;
+
+  const rawValue = parseFloat(last[1].replace(',', '.'));
+  if (!isFinite(rawValue) || rawValue <= 0) return null;
+
+  const tok = last[2].toLowerCase();
+  const isWeightToken = tok.startsWith('kg') || tok.startsWith('g');
+  const isVolumeToken = tok === 'ml' || tok.startsWith('l');
+
+  let value;
+  if (u === 'kg') {
+    if (!isWeightToken) return null;
+    value = tok.startsWith('kg') ? rawValue : rawValue / 1000; // g/gr -> kg
+  } else {
+    if (!isVolumeToken) return null;
+    value = tok === 'ml' ? rawValue / 1000 : rawValue; // ml -> litros
+  }
+
+  // Rango razonable para evitar falsos positivos (ej. porcentajes o códigos)
+  if (value <= 0 || value > 1000) return null;
+  return value;
+}
+
 // Categorías visibles según el modo de conteo elegido (semanal/mensual).
 function visibleCategories() {
   return state.mode === 'semanal' ? CATEGORIES.filter(c => SEMANAL_CATEGORIES.includes(c)) : CATEGORIES;
@@ -809,12 +852,26 @@ function buildProductListHtml(filtered) {
 
       const isBox = isBoxCategory(p.category);
       if (isBox) {
-        const detail = activeBoxDetails()[p.code] || { cajas: 0, udXCaja: 0, sueltas: 0 };
+        const detail = activeBoxDetails()[p.code] || { cajas: 0, udXCaja: 0, sueltas: 0, manualWeight: 0 };
         const subtotal = (detail.cajas || 0) * (detail.udXCaja || 0);
+        const unitLabel = String(p.unit || '').toLowerCase();
+        const uw = detectUnitWeight(p.name, p.unit);
+        // Si no se detectó peso/volumen en el nombre pero la unidad es Kg o Litro,
+        // se permite ingresarlo a mano (ej. productos a granel sin tamaño fijo en el nombre).
+        const allowManualWeight = !uw && (unitLabel === 'kg' || unitLabel === 'litro');
+        const effectiveWeight = uw || (detail.manualWeight > 0 ? detail.manualWeight : null);
+        const eqLabel = effectiveWeight
+          ? `= ${formatQty(subtotal)} ud (× ${formatQty(effectiveWeight)} ${unitLabel}/ud)`
+          : `= ${formatQty(subtotal)} ud`;
+        const manualWeightFieldHtml = allowManualWeight ? `
+            <div class="helado-field">
+              <span class="helado-label">Peso/Litros por ud (manual)</span>
+              <input type="text" inputmode="decimal" class="helado-input" data-boxweight="${p.code}" value="${detail.manualWeight ? formatQty(detail.manualWeight) : ''}" placeholder="Ej: 2,5">
+            </div>` : '';
         listHtml += `
           <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}" ${rowStyle}>
             <div class="product-info">
-              <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
+              <div class="code">#${p.code} · ${escapeHtml(p.unit)}${effectiveWeight ? ` · ${formatQty(effectiveWeight)} ${unitLabel}/ud` : ''}</div>
               <div class="name">${escapeHtml(p.name)}</div>
               ${prevHintHtml(p.code, p.unit)}
             </div>
@@ -828,11 +885,12 @@ function buildProductListHtml(filtered) {
               <span class="helado-label">Ud x caja</span>
               <input type="text" inputmode="numeric" class="helado-input" data-udxcaja="${p.code}" value="${detail.udXCaja || ''}" placeholder="0">
             </div>
-            <div class="helado-eq">= ${formatQty(subtotal)} ud</div>
+            <div class="helado-eq">${eqLabel}</div>
             <div class="helado-field">
               <span class="helado-label">Ud sueltas</span>
               <input type="text" inputmode="decimal" class="helado-input" data-sueltas="${p.code}" value="${detail.sueltas ? formatQty(detail.sueltas) : ''}" placeholder="0">
             </div>
+            ${manualWeightFieldHtml}
             <div class="helado-total">Total: <b data-total-label="${p.code}">${formatQty(qty)} ${escapeHtml(p.unit)}</b></div>
           </div>`;
         return;
@@ -1004,6 +1062,10 @@ function attachCountRowHandlers() {
     input.onchange = (e) => updateBoxRow(input.getAttribute('data-sueltas'), 'sueltas', e.target.value);
     input.onfocus = (e) => e.target.select();
   });
+  document.querySelectorAll('[data-boxweight]').forEach(input => {
+    input.onchange = (e) => updateBoxRow(input.getAttribute('data-boxweight'), 'manualWeight', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
 }
 
 // Umbrales usados para detectar que alguien anotó el peso tal como lo
@@ -1061,25 +1123,36 @@ function updateHeladoRow(code, field, rawValue, inputEl) {
 
 function updateBoxRow(code, field, rawValue) {
   const details = activeBoxDetails();
-  const current = details[code] || { cajas: 0, udXCaja: 0, sueltas: 0 };
-  const value = field === 'sueltas'
+  const current = details[code] || { cajas: 0, udXCaja: 0, sueltas: 0, manualWeight: 0 };
+  const value = (field === 'sueltas' || field === 'manualWeight')
     ? Math.max(0, parseQtyInput(rawValue))
     : Math.max(0, Math.round(parseQtyInput(rawValue)));
   current[field] = value;
   details[code] = current;
 
-  const total = (current.cajas || 0) * (current.udXCaja || 0) + (current.sueltas || 0);
+  const product = PRODUCTS.find(p => String(p.code) === String(code));
+  const unit = (product && product.unit) || 'ud';
+  const uw = product ? detectUnitWeight(product.name, product.unit) : null;
+  // Si no hay peso/volumen detectado en el nombre, se usa el que ingresó manualmente
+  // (solo disponible para productos con unidad Kg o Litro sin tamaño fijo en el nombre).
+  const effectiveWeight = uw || (current.manualWeight > 0 ? current.manualWeight : null);
+
+  const subtotalUd = (current.cajas || 0) * (current.udXCaja || 0) + (current.sueltas || 0);
+  const total = effectiveWeight ? subtotalUd * effectiveWeight : subtotalUd;
   activeCounts()[code] = total;
   saveCurrent();
 
-  const product = PRODUCTS.find(p => String(p.code) === String(code));
-  const unit = (product && product.unit) || 'ud';
   const row = document.querySelector(`[data-row="${code}"]`);
   if (row) row.classList.toggle('counted', total > 0);
   const wrap = document.querySelector(`[data-box-wrap="${code}"]`);
   if (wrap) {
     const eq = wrap.querySelector('.helado-eq');
-    if (eq) eq.textContent = `= ${formatQty((current.cajas || 0) * (current.udXCaja || 0))} ud`;
+    if (eq) {
+      const subtotalBoxes = (current.cajas || 0) * (current.udXCaja || 0);
+      eq.textContent = effectiveWeight
+        ? `= ${formatQty(subtotalBoxes)} ud (× ${formatQty(effectiveWeight)} ${String(unit).toLowerCase()}/ud)`
+        : `= ${formatQty(subtotalBoxes)} ud`;
+    }
     const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} ${unit}`;
   }
