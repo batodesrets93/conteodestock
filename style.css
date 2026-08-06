@@ -505,6 +505,17 @@ input{font-family:inherit;}
   text-align:center;
 }
 .helado-input:focus{outline:2px solid var(--pink);}
+.helado-input-locked{
+  background:var(--line);
+  color:var(--ink-soft);
+  cursor:not-allowed;
+}
+.helado-input-locked:focus{outline:none;}
+.helado-warn{
+  font-size:10px;
+  color:#b3541e;
+  font-weight:600;
+}
 .helado-eq{
   font-family:var(--mono);
   font-size:12.5px;
