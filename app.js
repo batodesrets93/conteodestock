@@ -161,6 +161,17 @@ function priceLabelForLocation(location) {
   return priceFieldForLocation(location) === 'price2' ? 'Precio 2 (BCN)' : 'Precio 1 (Madrid / Málaga)';
 }
 
+// En Madrid y Málaga el "Peso prom. (kg)" de cada helado viene precargado
+// desde products.js (avgWeight) y no se puede editar a mano durante el
+// conteo -- así todos cuentan siempre con el mismo peso de referencia.
+// En las sucursales de BCN (incluida la Fábrica) se sigue permitiendo
+// ingresarlo a mano, como hasta ahora.
+// Si a algún producto puntual todavía no se le cargó avgWeight, se deja
+// el campo editable como excepción (para no trabar el conteo) y se avisa.
+function pesoHeladoBloqueado(location) {
+  return priceFieldForLocation(location) === 'price1';
+}
+
 function loadPriceHistory() {
   const raw = localStorage.getItem(PRICE_HISTORY_KEY);
   if (!raw) return [];
@@ -822,7 +833,14 @@ function buildProductListHtml(filtered) {
 
       if (isHelado) {
         const detail = activeHeladoDetails()[p.code] || { vasquetas: 0, pesoProm: 0, manualKg: 0 };
-        const subtotal = (detail.vasquetas || 0) * (detail.pesoProm || 0);
+        // En Madrid/Málaga el peso prom. viene fijo desde products.js (avgWeight)
+        // y no se puede tocar. Excepción: si ese producto todavía no tiene
+        // avgWeight cargado, se deja editable para no trabar el conteo.
+        const bloqueaPeso = pesoHeladoBloqueado(state.location) && (p.avgWeight !== null && p.avgWeight !== undefined);
+        const pesoProm = bloqueaPeso ? Number(p.avgWeight) : (detail.pesoProm || 0);
+        const subtotal = (detail.vasquetas || 0) * pesoProm;
+        const sinPesoAvisoHtml = (pesoHeladoBloqueado(state.location) && !bloqueaPeso)
+          ? `<span class="helado-warn">⚠ Sin peso cargado, ingresalo a mano</span>` : '';
         listHtml += `
           <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}" ${rowStyle}>
             <div class="product-info">
@@ -838,7 +856,8 @@ function buildProductListHtml(filtered) {
             </div>
             <div class="helado-field">
               <span class="helado-label">Peso prom. (kg)</span>
-              <input type="text" inputmode="decimal" class="helado-input" data-pesoprom="${p.code}" value="${detail.pesoProm ? formatQty(detail.pesoProm) : ''}" placeholder="Ej: 3,4">
+              <input type="text" inputmode="decimal" class="helado-input${bloqueaPeso ? ' helado-input-locked' : ''}" data-pesoprom="${p.code}" value="${pesoProm ? formatQty(pesoProm) : ''}" placeholder="Ej: 3,4" ${bloqueaPeso ? 'readonly title="Peso precargado para Madrid/Málaga, no editable"' : ''}>
+              ${sinPesoAvisoHtml}
             </div>
             <div class="helado-eq">= ${formatQty(subtotal)} kg</div>
             <div class="helado-field">
@@ -1089,6 +1108,13 @@ function confirmGramsToKg(value, campoLabel) {
 }
 
 function updateHeladoRow(code, field, rawValue, inputEl) {
+  const product = PRODUCTS.find(p => String(p.code) === String(code));
+  const bloqueaPeso = pesoHeladoBloqueado(state.location) && !!(product && product.avgWeight !== null && product.avgWeight !== undefined);
+  // El input de "Peso prom." queda readonly en Madrid/Málaga, pero por las
+  // dudas (ej. algún dato viejo en localStorage) nunca se acepta una edición
+  // manual mientras esté bloqueado.
+  if (field === 'pesoProm' && bloqueaPeso) return;
+
   const details = activeHeladoDetails();
   const current = details[code] || { vasquetas: 0, pesoProm: 0, manualKg: 0 };
   let value = field === 'vasquetas'
@@ -1103,6 +1129,9 @@ function updateHeladoRow(code, field, rawValue, inputEl) {
   if (inputEl) inputEl.value = formatQty(value);
 
   current[field] = value;
+  // Si el peso está bloqueado para esta sucursal, siempre se guarda el
+  // avgWeight del producto, sin importar qué campo se tocó (vasquetas o kg manual).
+  if (bloqueaPeso) current.pesoProm = Number(product.avgWeight);
   details[code] = current;
 
   const total = (current.vasquetas || 0) * (current.pesoProm || 0) + (current.manualKg || 0);
