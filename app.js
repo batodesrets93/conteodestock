@@ -5,6 +5,12 @@
    y terminan en UN SOLO Excel con dos pestañas: "Stock" y "Desperdicio".
    ============================================================ */
 
+// Versión visible de la app (se muestra en pantalla para poder confirmar
+// a simple vista, sin herramientas técnicas, si un celular ya actualizó o
+// sigue con una versión vieja en caché). Bumpear junto con CACHE_NAME en
+// service-worker.js cada vez que se sube un cambio.
+const APP_VERSION = 'v32';
+
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
 const SESSION_KEY = 'inv_logged_user';
@@ -581,6 +587,7 @@ function renderLocation() {
         `).join('')}
       </div>
       ${historyHtml}
+      <div class="app-version-tag">Versión ${APP_VERSION}</div>
     </div>
   `;
 
@@ -950,7 +957,7 @@ function renderCount() {
       <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <div style="text-align:center;">
         <h1>${escapeHtml(state.location)}</h1>
-        <div class="sub">${state.mode === 'semanal' ? 'Semanal' : 'Mensual'} · ${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático</div>
+        <div class="sub">${state.mode === 'semanal' ? 'Semanal' : 'Mensual'} · ${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático · ${APP_VERSION}</div>
       </div>
       <span class="badge">${counted}/${productsForMode().length}</span>
     </div>
