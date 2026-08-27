@@ -9,7 +9,7 @@
 // a simple vista, sin herramientas técnicas, si un celular ya actualizó o
 // sigue con una versión vieja en caché). Bumpear junto con CACHE_NAME en
 // service-worker.js cada vez que se sube un cambio.
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
@@ -29,7 +29,8 @@ let state = {
   wasteCounts: {},        // { code: qty }
   wasteNotes: {},          // { code: 'motivo del desperdicio' }
   heladoDetails: { stock: {}, desperdicio: {} }, // { code: { vasquetas, manualKg } } -- solo para HELADO (KG)
-  boxDetails: { stock: {}, desperdicio: {} },      // { code: { cajas, udXCaja, sueltas } } -- para el resto (menos ice pops)
+  boxDetails: { stock: {}, desperdicio: {} },      // { code: { cajas, udXCaja, sueltas, manualWeight, manualExtra } } -- para el resto (menos ice pops)
+  generalNote: '',      // nota libre opcional, cargada al preguntar por el desperdicio
   undoStack: [],            // [{ stage, code, prevValue }] -- para el botón Deshacer
   search: '',
   activeCategory: 'Todas',
@@ -53,6 +54,7 @@ function saveCurrent() {
     wasteNotes: state.wasteNotes,
     heladoDetails: state.heladoDetails,
     boxDetails: state.boxDetails,
+    generalNote: state.generalNote,
   }));
 }
 
@@ -603,6 +605,7 @@ function renderLocation() {
       state.wasteNotes = current.wasteNotes || {};
       state.heladoDetails = current.heladoDetails || { stock: {}, desperdicio: {} };
       state.boxDetails = current.boxDetails || { stock: {}, desperdicio: {} };
+      state.generalNote = current.generalNote || '';
       state.search = '';
       state.activeCategory = 'Todas';
       state.screen = 'count';
@@ -719,6 +722,7 @@ function renderMode() {
     state.wasteNotes = {};
     state.heladoDetails = { stock: {}, desperdicio: {} };
     state.boxDetails = { stock: {}, desperdicio: {} };
+    state.generalNote = '';
     state.undoStack = [];
     state.search = '';
     state.activeCategory = 'Todas';
@@ -878,13 +882,15 @@ function buildProductListHtml(filtered) {
 
       const isBox = isBoxCategory(p.category);
       if (isBox) {
-        const detail = activeBoxDetails()[p.code] || { cajas: 0, udXCaja: 0, sueltas: 0, manualWeight: 0 };
+        const detail = activeBoxDetails()[p.code] || { cajas: 0, udXCaja: 0, sueltas: 0, manualWeight: 0, manualExtra: 0 };
         const subtotal = (detail.cajas || 0) * (detail.udXCaja || 0);
         const unitLabel = String(p.unit || '').toLowerCase();
         const uw = detectUnitWeight(p.name, p.unit);
+        const isKgOrLitro = unitLabel === 'kg' || unitLabel === 'litro';
         // Si no se detectó peso/volumen en el nombre pero la unidad es Kg o Litro,
-        // se permite ingresarlo a mano (ej. productos a granel sin tamaño fijo en el nombre).
-        const allowManualWeight = !uw && (unitLabel === 'kg' || unitLabel === 'litro');
+        // se permite ingresar a mano el peso/volumen POR UNIDAD (ej. productos a
+        // granel sin tamaño fijo en el nombre).
+        const allowManualWeight = !uw && isKgOrLitro;
         const effectiveWeight = uw || (detail.manualWeight > 0 ? detail.manualWeight : null);
         const eqLabel = effectiveWeight
           ? `= ${formatQty(subtotal)} ud (× ${formatQty(effectiveWeight)} ${unitLabel}/ud)`
@@ -893,6 +899,15 @@ function buildProductListHtml(filtered) {
             <div class="helado-field">
               <span class="helado-label">Peso/Litros por ud (manual)</span>
               <input type="text" inputmode="decimal" class="helado-input" data-boxweight="${p.code}" value="${detail.manualWeight ? formatQty(detail.manualWeight) : ''}" placeholder="Ej: 2,5">
+            </div>` : '';
+        // Para todo producto en Kg/Litro (tenga o no peso por unidad detectado/cargado)
+        // se permite sumar a mano kg/litros sueltos: sirve para un item abierto/parcial,
+        // ej. un balde de 6,5kg del que queda un resto de 3kg. Esto se SUMA directo al
+        // total, sin multiplicar por cajas.
+        const manualExtraFieldHtml = isKgOrLitro ? `
+            <div class="helado-field">
+              <span class="helado-label">${unitLabel === 'litro' ? 'Litros' : 'Kg'} sueltos (a mano)</span>
+              <input type="text" inputmode="decimal" class="helado-input" data-manualextra="${p.code}" value="${detail.manualExtra ? formatQty(detail.manualExtra) : ''}" placeholder="Ej: 3" title="Se suma directo al total, para items abiertos o parciales">
             </div>` : '';
         listHtml += `
           <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}" ${rowStyle}>
@@ -917,6 +932,7 @@ function buildProductListHtml(filtered) {
               <input type="text" inputmode="decimal" class="helado-input" data-sueltas="${p.code}" value="${detail.sueltas ? formatQty(detail.sueltas) : ''}" placeholder="0">
             </div>
             ${manualWeightFieldHtml}
+            ${manualExtraFieldHtml}
             <div class="helado-total">Total: <b data-total-label="${p.code}">${formatQty(qty)} ${escapeHtml(p.unit)}</b></div>
           </div>`;
         return;
@@ -1092,6 +1108,10 @@ function attachCountRowHandlers() {
     input.onchange = (e) => updateBoxRow(input.getAttribute('data-boxweight'), 'manualWeight', e.target.value);
     input.onfocus = (e) => e.target.select();
   });
+  document.querySelectorAll('[data-manualextra]').forEach(input => {
+    input.onchange = (e) => updateBoxRow(input.getAttribute('data-manualextra'), 'manualExtra', e.target.value, e.target);
+    input.onfocus = (e) => e.target.select();
+  });
 }
 
 // Umbrales usados para detectar que alguien anotó el peso tal como lo
@@ -1157,12 +1177,20 @@ function updateHeladoRow(code, field, rawValue, inputEl) {
   updateProgressUI();
 }
 
-function updateBoxRow(code, field, rawValue) {
+function updateBoxRow(code, field, rawValue, inputEl) {
   const details = activeBoxDetails();
-  const current = details[code] || { cajas: 0, udXCaja: 0, sueltas: 0, manualWeight: 0 };
-  const value = (field === 'sueltas' || field === 'manualWeight')
+  const current = details[code] || { cajas: 0, udXCaja: 0, sueltas: 0, manualWeight: 0, manualExtra: 0 };
+  let value = (field === 'sueltas' || field === 'manualWeight' || field === 'manualExtra')
     ? Math.max(0, parseQtyInput(rawValue))
     : Math.max(0, Math.round(parseQtyInput(rawValue)));
+
+  // Mismo resguardo que en Helado: si alguien tipea el peso en gramos (balanza)
+  // en el campo de kg/litros sueltos a mano, ofrecemos corregirlo.
+  if (field === 'manualExtra' && value > MANUAL_KG_MAX_KG) {
+    value = confirmGramsToKg(value, 'los kg/litros sueltos a mano');
+  }
+  if (inputEl) inputEl.value = formatQty(value);
+
   current[field] = value;
   details[code] = current;
 
@@ -1174,7 +1202,9 @@ function updateBoxRow(code, field, rawValue) {
   const effectiveWeight = uw || (current.manualWeight > 0 ? current.manualWeight : null);
 
   const subtotalUd = (current.cajas || 0) * (current.udXCaja || 0) + (current.sueltas || 0);
-  const total = effectiveWeight ? subtotalUd * effectiveWeight : subtotalUd;
+  // Los kg/litros sueltos "a mano" se suman directo al total, sin multiplicar por
+  // cajas: sirven para cargar un item abierto/parcial (ej. un balde que no llegó al peso estándar).
+  const total = (effectiveWeight ? subtotalUd * effectiveWeight : subtotalUd) + (current.manualExtra || 0);
   activeCounts()[code] = total;
   saveCurrent();
 
@@ -1253,6 +1283,7 @@ function updateRowUI(code, qty) {
 
 function renderAskWaste() {
   const nStock = countedItemsCount(); // en este punto state.stage sigue en 'stock'
+  const hasNote = !!(state.generalNote && state.generalNote.trim());
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
@@ -1267,10 +1298,41 @@ function renderAskWaste() {
       </div>
       <button class="btn-primary" id="wasteYes">Sí, contar desperdicio</button>
       <button class="btn-secondary" id="wasteNo">No, generar Excel</button>
+
+      <div class="note-question">
+        <p class="note-question-label">¿Hay alguna nota?</p>
+        <div class="note-toggle">
+          <button type="button" class="chip${hasNote ? ' active' : ''}" id="noteYesBtn">Sí</button>
+          <button type="button" class="chip${hasNote ? '' : ' active'}" id="noteNoBtn">No</button>
+        </div>
+        <textarea id="generalNoteInput" class="note-textarea" placeholder="Escribí lo que quieras..." style="display:${hasNote ? 'block' : 'none'};">${escapeHtml(state.generalNote || '')}</textarea>
+      </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = () => { state.screen = 'count'; state.stage = 'stock'; render(); };
+
+  const noteTextarea = document.getElementById('generalNoteInput');
+  const noteYesBtn = document.getElementById('noteYesBtn');
+  const noteNoBtn = document.getElementById('noteNoBtn');
+  noteYesBtn.onclick = () => {
+    noteYesBtn.classList.add('active');
+    noteNoBtn.classList.remove('active');
+    noteTextarea.style.display = 'block';
+    noteTextarea.focus();
+  };
+  noteNoBtn.onclick = () => {
+    noteNoBtn.classList.add('active');
+    noteYesBtn.classList.remove('active');
+    noteTextarea.style.display = 'none';
+    noteTextarea.value = '';
+    state.generalNote = '';
+    saveCurrent();
+  };
+  noteTextarea.onchange = (e) => {
+    state.generalNote = e.target.value;
+    saveCurrent();
+  };
 
   document.getElementById('wasteYes').onclick = () => {
     state.stage = 'desperdicio';
@@ -1300,6 +1362,7 @@ function renderSummary() {
         mode: state.mode,
         stockCounts: state.stockCounts,
         wasteCounts: state.wasteCounts,
+        generalNote: state.generalNote,
         finishedAt: new Date().toISOString(),
         generatedBy: state.currentUser,
       };
@@ -1379,6 +1442,11 @@ function renderSummary() {
         <h2>${escapeHtml(data.location)}</h2>
         <p>${data.mode === 'semanal' ? 'Conteo Semanal' : 'Conteo Mensual'} · ${fmtDate(data.finishedAt)} · Generado por ${escapeHtml(data.generatedBy || '—')}</p>
       </div>
+      ${data.generalNote && data.generalNote.trim() ? `
+      <div class="note-summary-block">
+        <div class="section-label">Nota</div>
+        <p class="note-summary-text">${escapeHtml(data.generalNote)}</p>
+      </div>` : ''}
       <div class="summary-stats">
         <div class="stat-card"><div class="num">${stockItems.length}</div><div class="lbl">Productos (Stock)</div></div>
         <div class="stat-card"><div class="num">${totalStockUnits}</div><div class="lbl">Unidades (Stock)</div></div>
@@ -1460,6 +1528,7 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
     ];
     const missing = missingPriceCount(items);
     if (missing > 0) rows.push([`⚠ ${missing} producto(s) sin precio cargado (no se incluyen en el total)`]);
+    if (data.generalNote && data.generalNote.trim()) rows.push([`Nota: ${data.generalNote.trim()}`]);
     rows.push([]);
     return rows;
   };
@@ -1534,6 +1603,7 @@ function finalizeIfNeeded(data) {
     wasteNotes: state.wasteNotes,
     heladoDetails: state.heladoDetails,
     boxDetails: state.boxDetails,
+    generalNote: state.generalNote,
     stockCounts: data.stockCounts,
     wasteCounts: data.wasteCounts,
     itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,

@@ -479,6 +479,53 @@ input{font-family:inherit;}
 .waste-note-input::placeholder{color:var(--ink-soft);}
 .waste-note-input:focus{outline:2px solid var(--pink);}
 
+.note-question{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);
+  padding:14px 16px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.note-question-label{
+  margin:0;
+  font-size:14px;
+  font-weight:700;
+  color:var(--ink);
+}
+.note-toggle{display:flex;gap:8px;}
+.note-textarea{
+  width:100%;
+  min-height:90px;
+  padding:10px 12px;
+  border-radius:9px;
+  border:1.5px solid var(--line);
+  background:var(--cream);
+  color:var(--ink);
+  font-size:13.5px;
+  font-family:inherit;
+  resize:vertical;
+}
+.note-textarea::placeholder{color:var(--ink-soft);}
+.note-textarea:focus{outline:2px solid var(--pink);}
+
+.note-summary-block{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);
+  padding:12px 16px 14px;
+  margin-bottom:14px;
+}
+.note-summary-text{
+  margin:4px 0 0;
+  font-size:13.5px;
+  color:var(--ink);
+  white-space:pre-wrap;
+}
+
 .helado-controls{
   background:var(--surface);
   border:1px solid var(--line);
