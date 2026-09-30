@@ -10,7 +10,7 @@
 // a simple vista, sin herramientas técnicas, si un celular ya actualizó o
 // sigue con una versión vieja en caché). Bumpear junto con CACHE_NAME en
 // service-worker.js cada vez que se sube un cambio.
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v38';
 
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
@@ -2175,9 +2175,11 @@ render();
 
 /* ---------------- Actualizaciones automáticas ----------------
    Cuando subís cambios nuevos a GitHub, el celular de cada persona
-   descarga el archivo en segundo plano y le muestra un banner con
-   un botón "Actualizar". Al tocarlo, se activa la versión nueva y
-   se recarga la página sola. */
+   descarga la versión nueva en segundo plano, se activa sola y la
+   página se recarga sola. El conteo en curso no se pierde porque se
+   guarda en el celular con cada cambio. Única excepción: si
+   batodesrets tiene precios editados sin guardar, se muestra un
+   banner para que los guarde antes de recargar. */
 
 function showUpdateBanner(waitingWorker) {
   if (document.getElementById('updateBanner')) return;
@@ -2197,24 +2199,44 @@ function showUpdateBanner(waitingWorker) {
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
+  const doReload = () => {
     if (refreshing) return;
     refreshing = true;
-    window.location.reload();
+    // Si hay un campo con foco (ej. escribiendo una cantidad), lo soltamos
+    // primero para que se dispare su guardado antes de recargar.
+    const el = document.activeElement;
+    if (el && typeof el.blur === 'function') el.blur();
+    setTimeout(() => window.location.reload(), 150);
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    const hayPreciosSinGuardar = state.screen === 'prices' && Object.keys(priceEditsBuffer || {}).length > 0;
+    if (hayPreciosSinGuardar) {
+      if (document.getElementById('updateBanner')) return;
+      const banner = document.createElement('div');
+      banner.id = 'updateBanner';
+      banner.className = 'update-banner';
+      banner.innerHTML = `<span>Versión nueva lista. Guardá los precios y tocá Recargar</span><button id="updateBannerBtn">Recargar</button>`;
+      document.body.appendChild(banner);
+      document.getElementById('updateBannerBtn').onclick = doReload;
+      return;
+    }
+    doReload();
   });
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').then((reg) => {
+    // updateViaCache 'none': el celular siempre pregunta a GitHub si hay un
+    // service-worker.js nuevo, sin usar una copia guardada por el navegador.
+    navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then((reg) => {
       // Si ya hay una versión nueva esperando (por ejemplo, se descargó
       // mientras la app estaba cerrada), avisamos apenas se abre.
-      if (reg.waiting) showUpdateBanner(reg.waiting);
+      if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
 
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBanner(newWorker);
+            newWorker.postMessage('SKIP_WAITING');
           }
         });
       });
