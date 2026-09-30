@@ -1,6 +1,7 @@
 /* ============================================================
    Conteo de Inventario - lógica principal
-   Pantallas: login -> location -> count (stock) -> askWaste -> count (desperdicio) -> summary
+   Pantallas: login -> location -> count (stock) -> askWaste -> count (desperdicio)
+              -> envioDest -> count (envío a cada sucursal) -> summary
    El Stock y el Desperdicio comparten el mismo listado de productos
    y terminan en UN SOLO Excel con dos pestañas: "Stock" y "Desperdicio".
    ============================================================ */
@@ -9,7 +10,7 @@
 // a simple vista, sin herramientas técnicas, si un celular ya actualizó o
 // sigue con una versión vieja en caché). Bumpear junto con CACHE_NAME en
 // service-worker.js cada vez que se sube un cambio.
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v37';
 
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
@@ -23,7 +24,7 @@ let state = {
   currentUser: null,
   location: null,
   mode: null,           // 'semanal' | 'mensual' -- qué tipo de conteo se está haciendo
-  stage: 'stock',       // 'stock' | 'desperdicio' -- qué se está contando ahora mismo
+  stage: 'stock',       // 'stock' | 'desperdicio' | 'envio' -- qué se está contando ahora mismo
   startedAt: null,
   stockCounts: {},       // { code: qty }
   wasteCounts: {},        // { code: qty }
@@ -31,6 +32,9 @@ let state = {
   heladoDetails: { stock: {}, desperdicio: {} }, // { code: { vasquetas, manualKg } } -- solo para HELADO (KG)
   boxDetails: { stock: {}, desperdicio: {} },      // { code: { cajas, udXCaja, sueltas, manualWeight, manualExtra } } -- para el resto (menos ice pops)
   generalNote: '',      // nota libre opcional, cargada al preguntar por el desperdicio
+  envios: {},           // { [sucursalDestino]: { counts: {code: qty}, heladoDetails: {}, boxDetails: {} } }
+  envioDest: null,      // sucursal destino que se está cargando ahora (solo en stage 'envio')
+  envioGroup: 'terminados', // 'terminados' | 'materia' -- qué parte del listado de envíos se ve
   undoStack: [],            // [{ stage, code, prevValue }] -- para el botón Deshacer
   search: '',
   activeCategory: 'Todas',
@@ -55,6 +59,8 @@ function saveCurrent() {
     heladoDetails: state.heladoDetails,
     boxDetails: state.boxDetails,
     generalNote: state.generalNote,
+    envios: state.envios,
+    envioDest: state.envioDest,
   }));
 }
 
@@ -294,16 +300,42 @@ function escapeHtml(str) {
 
 // Devuelve el objeto de conteo activo según lo que se está contando ahora (stock o desperdicio)
 function activeCounts() {
+  if (state.stage === 'envio') return activeEnvio().counts;
   return state.stage === 'desperdicio' ? state.wasteCounts : state.stockCounts;
+}
+
+// Datos del envío a la sucursal destino que se está cargando ahora.
+// Se crea vacío la primera vez que se elige ese destino.
+function activeEnvio() {
+  const dest = state.envioDest;
+  if (!state.envios) state.envios = {};
+  if (!state.envios[dest]) state.envios[dest] = { counts: {}, heladoDetails: {}, boxDetails: {} };
+  const e = state.envios[dest];
+  if (!e.counts) e.counts = {};
+  if (!e.heladoDetails) e.heladoDetails = {};
+  if (!e.boxDetails) e.boxDetails = {};
+  return e;
+}
+
+// Cantidad de productos con cantidad > 0 en un objeto { code: qty }
+function countPositive(obj) {
+  return Object.values(obj || {}).filter(q => Number(q) > 0).length;
+}
+
+// Total de productos enviados sumando todas las sucursales destino
+function totalEnvioItems(envios) {
+  return Object.values(envios || {}).reduce((sum, e) => sum + countPositive(e && e.counts), 0);
 }
 
 // Devuelve el detalle de vasquetas/kg manual activo (solo se usa para HELADO (KG))
 function activeHeladoDetails() {
+  if (state.stage === 'envio') return activeEnvio().heladoDetails;
   return state.heladoDetails[state.stage];
 }
 
 // Devuelve el detalle de cajas/ud por caja/sueltas activo (para todo lo que no sea helado ni ice pops)
 function activeBoxDetails() {
+  if (state.stage === 'envio') return activeEnvio().boxDetails;
   return state.boxDetails[state.stage];
 }
 
@@ -312,6 +344,29 @@ const ICE_POP_CATEGORIES = ['ICE POPS CLASSIC', 'ICE POPS SIN BAÑO', 'ICE POPS 
 // Categorías habilitadas para el conteo SEMANAL: solo helado y ice pops.
 // El conteo MENSUAL sigue habilitando el listado completo (todas las CATEGORIES).
 const SEMANAL_CATEGORIES = ['HELADO (KG)', ...ICE_POP_CATEGORIES];
+
+// Envíos a otras sucursales: el listado se divide en dos partes.
+// Siempre se muestra completo (sin importar si el conteo es semanal o mensual),
+// porque a otra sucursal se le puede mandar cualquier producto o materia prima.
+const ENVIO_GROUPS = {
+  terminados: {
+    label: 'Productos terminados',
+    categories: ['HELADO (KG)', ...ICE_POP_CATEGORIES, 'FRASCOS DDL', 'CANNOLIS', 'PASTELERIA'],
+  },
+  materia: {
+    label: 'Materia prima',
+    categories: [
+      'DULCE DE LECHES', 'FRUTAS', 'LACTEOS', 'INSUMOS PRODUCCION', 'VARIOS PRODUCCION',
+      'BARRY CALLEBAUT', 'ICAM', 'SALSAS Y VARIEGATOS BABBI', 'SALSAS Y VARIEGATOS IRCA',
+      'SALSAS Y VARIEGATOS MEC 3', 'CITTÀ DEL GELATO', 'LEAGEL', 'COLORANTES',
+    ],
+  },
+};
+const ENVIO_GROUP_ORDER = ['terminados', 'materia'];
+
+function envioGroupOf(category) {
+  return ENVIO_GROUP_ORDER.find(g => ENVIO_GROUPS[g].categories.includes(category)) || null;
+}
 
 function isBoxCategory(category) {
   return category !== 'HELADO (KG)' && !ICE_POP_CATEGORIES.includes(category);
@@ -362,11 +417,13 @@ function detectUnitWeight(name, unit) {
 
 // Categorías visibles según el modo de conteo elegido (semanal/mensual).
 function visibleCategories() {
+  if (state.stage === 'envio') return CATEGORIES.filter(c => envioGroupOf(c) === state.envioGroup);
   return state.mode === 'semanal' ? CATEGORIES.filter(c => SEMANAL_CATEGORIES.includes(c)) : CATEGORIES;
 }
 
 // Productos habilitados según el modo (para el total del badge, etc.)
 function productsForMode() {
+  if (state.stage === 'envio') return PRODUCTS.filter(p => envioGroupOf(p.category) !== null);
   return state.mode === 'semanal' ? PRODUCTS.filter(p => SEMANAL_CATEGORIES.includes(p.category)) : PRODUCTS;
 }
 
@@ -453,6 +510,7 @@ function render() {
   if (state.screen === 'changePassword') return renderChangePassword();
   if (state.screen === 'count') return renderCount();
   if (state.screen === 'askWaste') return renderAskWaste();
+  if (state.screen === 'envioDest') return renderEnvioDest();
   if (state.screen === 'summary') return renderSummary();
   if (state.screen === 'prices') return renderPrices();
   if (state.screen === 'priceHistory') return renderPriceHistory();
@@ -520,12 +578,13 @@ function renderLocation() {
   if (current && current.location) {
     const nStock = Object.values(current.stockCounts || {}).filter(q => Number(q) > 0).length;
     const nWaste = Object.values(current.wasteCounts || {}).filter(q => Number(q) > 0).length;
+    const nEnvios = totalEnvioItems(current.envios);
     const modeLabel = current.mode === 'semanal' ? 'Semanal' : 'Mensual';
     resumeHtml = `
       <div class="resume-card" id="resumeCard">
         <div class="info">
           <b>${escapeHtml(current.location)} · ${modeLabel}</b>
-          <span>Conteo en curso · ${nStock} de stock${nWaste ? `, ${nWaste} de desperdicio` : ''}</span>
+          <span>Conteo en curso · ${nStock} de stock${nWaste ? `, ${nWaste} de desperdicio` : ''}${nEnvios ? `, ${nEnvios} enviados` : ''}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
           <span class="go" style="display:flex;align-items:center;gap:4px;">Continuar ${ICONS.chevronRight}</span>
@@ -544,7 +603,7 @@ function renderLocation() {
           <div class="history-item">
             <div class="info">
               <b>${escapeHtml(h.location)}${h.mode ? ` · ${h.mode === 'semanal' ? 'Semanal' : 'Mensual'}` : ''}</b>
-              <span>${fmtDate(h.finishedAt)} · ${h.itemCountStock} stock${h.itemCountWaste ? ` · ${h.itemCountWaste} desperdicio` : ''} · por ${escapeHtml(h.generatedBy || '—')}</span>
+              <span>${fmtDate(h.finishedAt)} · ${h.itemCountStock} stock${h.itemCountWaste ? ` · ${h.itemCountWaste} desperdicio` : ''}${h.itemCountEnvios ? ` · ${h.itemCountEnvios} enviados` : ''} · por ${escapeHtml(h.generatedBy || '—')}</span>
             </div>
             <div style="display:flex;gap:4px;">
               <button data-history-index="${i}">Ver</button>
@@ -606,9 +665,15 @@ function renderLocation() {
       state.heladoDetails = current.heladoDetails || { stock: {}, desperdicio: {} };
       state.boxDetails = current.boxDetails || { stock: {}, desperdicio: {} };
       state.generalNote = current.generalNote || '';
+      state.envios = current.envios || {};
+      state.envioDest = current.envioDest || null;
+      state.envioGroup = 'terminados';
+      state.undoStack = [];
+      state._finalized = false;
       state.search = '';
       state.activeCategory = 'Todas';
       state.screen = 'count';
+      if (state.stage === 'envio' && !state.envioDest) { state.stage = 'stock'; state.screen = 'envioDest'; }
       render();
     };
   }
@@ -723,6 +788,10 @@ function renderMode() {
     state.heladoDetails = { stock: {}, desperdicio: {} };
     state.boxDetails = { stock: {}, desperdicio: {} };
     state.generalNote = '';
+    state.envios = {};
+    state.envioDest = null;
+    state.envioGroup = 'terminados';
+    state._finalized = false;
     state.undoStack = [];
     state.search = '';
     state.activeCategory = 'Todas';
@@ -799,6 +868,7 @@ function renderChangePassword() {
 function getFilteredProducts() {
   const term = state.search.trim().toLowerCase();
   return productsForMode().filter(p => {
+    if (state.stage === 'envio' && envioGroupOf(p.category) !== state.envioGroup) return false;
     if (state.activeCategory !== 'Todas' && p.category !== state.activeCategory) return false;
     if (!term) return true;
     return p.name.toLowerCase().includes(term) || String(p.code).includes(term);
@@ -810,7 +880,7 @@ function buildProductListHtml(filtered) {
   const isWaste = state.stage === 'desperdicio';
   // Solo mostramos referencia de stock previo durante el conteo de Stock
   // (no tiene sentido para Desperdicio), comparando sucursal + modo actual.
-  const prevStock = (!isWaste && getPrevStock(state.location, state.mode)) || null;
+  const prevStock = (state.stage === 'stock' && getPrevStock(state.location, state.mode)) || null;
   const prevQty = (code) => {
     if (!prevStock) return null;
     const v = Number(prevStock.stockCounts[code] || 0);
@@ -967,13 +1037,22 @@ function renderCount() {
   const counted = countedItemsCount();
   const listHtml = buildProductListHtml(filtered);
   const isWaste = state.stage === 'desperdicio';
+  const isEnvio = state.stage === 'envio';
+  const stageLabel = isEnvio ? 'Envío a otra sucursal' : (isWaste ? 'Contando Desperdicio' : 'Contando Stock');
+  const envioGroupToggleHtml = isEnvio ? `
+      <div class="chips" id="envioGroupChips" style="margin-bottom:6px;">
+        ${ENVIO_GROUP_ORDER.map(g => {
+          const n = PRODUCTS.filter(p => envioGroupOf(p.category) === g && Number(activeCounts()[p.code] || 0) > 0).length;
+          return `<button class="chip ${state.envioGroup === g ? 'active' : ''}" data-envio-group="${g}">${g === 'terminados' ? '🍦' : '🧪'} ${ENVIO_GROUPS[g].label}${n ? ` (${n})` : ''}</button>`;
+        }).join('')}
+      </div>` : '';
 
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <div style="text-align:center;">
-        <h1>${escapeHtml(state.location)}</h1>
-        <div class="sub">${state.mode === 'semanal' ? 'Semanal' : 'Mensual'} · ${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático · ${APP_VERSION}</div>
+        <h1>${escapeHtml(state.location)}${isEnvio ? ` → ${escapeHtml(state.envioDest)}` : ''}</h1>
+        <div class="sub">${state.mode === 'semanal' ? 'Semanal' : 'Mensual'} · ${stageLabel} · guardado automático · ${APP_VERSION}</div>
       </div>
       <span class="badge">${counted}/${productsForMode().length}</span>
     </div>
@@ -983,6 +1062,7 @@ function renderCount() {
         <span class="icon">${ICONS.search}</span>
         <input type="text" id="searchInput" placeholder="Buscar producto o código..." value="${escapeHtml(state.search)}">
       </div>
+      ${envioGroupToggleHtml}
       <div class="chips" id="chips">
         <button class="chip ${state.activeCategory === 'Todas' ? 'active' : ''}" data-cat="Todas">Todas</button>
         ${visibleCategories().map(c => `<button class="chip ${state.activeCategory === c ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
@@ -992,15 +1072,27 @@ function renderCount() {
     <div class="footer-bar">
       <button class="qty-btn" id="undoBtn" title="Deshacer último cambio" style="width:44px;height:44px;flex:none;">${ICONS.undo}</button>
       <span class="count-pill">${counted} contados</span>
-      <button class="btn-primary" id="finishBtn">${isWaste ? 'Finalizar desperdicio' : 'Finalizar conteo'}</button>
+      <button class="btn-primary" id="finishBtn">${isEnvio ? 'Listo con este envío' : (isWaste ? 'Finalizar desperdicio' : 'Finalizar conteo')}</button>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = () => {
-    if (isWaste) { state.screen = 'askWaste'; }
+    if (isEnvio) { state.screen = 'envioDest'; }
+    else if (isWaste) { state.screen = 'askWaste'; }
     else { state.screen = 'location'; }
     render();
   };
+
+  const envioGroupChips = document.getElementById('envioGroupChips');
+  if (envioGroupChips) {
+    envioGroupChips.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-envio-group]');
+      if (!btn) return;
+      state.envioGroup = btn.getAttribute('data-envio-group');
+      state.activeCategory = 'Todas';
+      render();
+    });
+  }
 
   const searchInput = document.getElementById('searchInput');
   searchInput.oninput = (e) => {
@@ -1025,13 +1117,21 @@ function renderCount() {
   document.getElementById('undoBtn').onclick = () => undoLastChange();
 
   document.getElementById('finishBtn').onclick = () => {
+    if (isEnvio) {
+      // Si no se cargó nada para esta sucursal, simplemente se vuelve a la lista
+      // de destinos (no queda un envío vacío registrado).
+      if (countedItemsCount() === 0 && state.envios) delete state.envios[state.envioDest];
+      saveCurrent();
+      state.screen = 'envioDest';
+      render();
+      return;
+    }
     if (countedItemsCount() === 0) {
       toast('Contá al menos un producto antes de finalizar');
       return;
     }
     if (isWaste) {
-      state.screen = 'summary';
-      state.viewingHistoryId = null;
+      state.screen = 'envioDest';
       render();
     } else {
       state.screen = 'askWaste';
@@ -1226,13 +1326,13 @@ function updateBoxRow(code, field, rawValue, inputEl) {
 }
 
 function pushUndo(code, prevValue) {
-  state.undoStack.push({ stage: state.stage, code, prevValue });
+  state.undoStack.push({ stage: state.stage, dest: state.envioDest, code, prevValue });
   if (state.undoStack.length > 20) state.undoStack.shift();
 }
 
 function undoLastChange() {
   const last = state.undoStack.pop();
-  if (!last || last.stage !== state.stage) {
+  if (!last || last.stage !== state.stage || (state.stage === 'envio' && last.dest !== state.envioDest)) {
     toast('No hay nada para deshacer');
     return;
   }
@@ -1282,7 +1382,7 @@ function updateRowUI(code, qty) {
 /* ---------------- ¿Tuviste desperdicios? ---------------- */
 
 function renderAskWaste() {
-  const nStock = countedItemsCount(); // en este punto state.stage sigue en 'stock'
+  const nStock = countPositive(state.stockCounts);
   const hasNote = !!(state.generalNote && state.generalNote.trim());
   app.innerHTML = `
     <div class="topbar">
@@ -1297,7 +1397,7 @@ function renderAskWaste() {
         <p>Ya contaste ${nStock} producto${nStock === 1 ? '' : 's'} de stock</p>
       </div>
       <button class="btn-primary" id="wasteYes">Sí, contar desperdicio</button>
-      <button class="btn-secondary" id="wasteNo">No, generar Excel</button>
+      <button class="btn-secondary" id="wasteNo">No, seguir</button>
 
       <div class="note-question">
         <p class="note-question-label">¿Hay alguna nota?</p>
@@ -1345,6 +1445,100 @@ function renderAskWaste() {
   };
 
   document.getElementById('wasteNo').onclick = () => {
+    state.screen = 'envioDest';
+    render();
+  };
+}
+
+/* ---------------- Envíos a otras sucursales ----------------
+   Después del stock (y del desperdicio, si hubo) se pregunta si se
+   mandó mercadería a otras sucursales. Se elige la sucursal destino y
+   se carga lo enviado, separado en Productos terminados y Materia prima.
+   Se pueden cargar envíos a varias sucursales; cada una queda por separado. */
+
+function renderEnvioDest() {
+  if (!state.envios) state.envios = {};
+  const destinos = LOCATIONS.filter(l => l.name !== state.location);
+  const nTotal = totalEnvioItems(state.envios);
+
+  const destRow = (loc) => {
+    const e = state.envios[loc.name];
+    const n = countPositive(e && e.counts);
+    const byGroup = ENVIO_GROUP_ORDER.map(g => {
+      const c = PRODUCTS.filter(p => envioGroupOf(p.category) === g && Number(((e && e.counts) || {})[p.code] || 0) > 0).length;
+      return c ? `${c} ${g === 'terminados' ? 'terminado' : 'de materia prima'}${c === 1 ? '' : (g === 'terminados' ? 's' : '')}` : '';
+    }).filter(Boolean).join(' · ');
+    return `
+      <div class="history-item">
+        <div class="info">
+          <b>${n ? '✅ ' : ''}${escapeHtml(loc.name)}</b>
+          <span>${n ? byGroup : 'Sin envío cargado'}</span>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <button data-envio-dest="${escapeHtml(loc.name)}">${n ? 'Editar' : 'Cargar'}</button>
+          ${n ? `<button data-envio-clear="${escapeHtml(loc.name)}" style="color:var(--danger);">Quitar</button>` : ''}
+        </div>
+      </div>`;
+  };
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
+      <h1>${escapeHtml(state.location)}</h1>
+      <span style="width:32px"></span>
+    </div>
+    <div class="home">
+      <div class="home-hero">
+        <span class="emoji">🚚</span>
+        <h2>¿Hiciste envíos a otras sucursales?</h2>
+        <p>Elegí a qué sucursal mandaste y cargá los productos terminados y la materia prima</p>
+      </div>
+      <div class="section-label">Sucursal destino</div>
+      <div class="history-list">${destinos.map(destRow).join('')}</div>
+      <div style="margin-top:18px;">
+        <button class="btn-primary" id="envioDoneBtn">${nTotal ? 'Listo, generar Excel' : 'No hubo envíos, generar Excel'}</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => {
+    state.stage = 'stock';
+    state.screen = 'askWaste';
+    render();
+  };
+
+  document.querySelectorAll('[data-envio-dest]').forEach(btn => {
+    btn.onclick = () => {
+      state.envioDest = btn.getAttribute('data-envio-dest');
+      state.stage = 'envio';
+      activeEnvio();
+      const e = state.envios[state.envioDest];
+      // Si ya había cargado algo de materia prima y nada terminado, arrancamos ahí.
+      const hasTerm = PRODUCTS.some(p => envioGroupOf(p.category) === 'terminados' && Number(e.counts[p.code] || 0) > 0);
+      const hasMat = PRODUCTS.some(p => envioGroupOf(p.category) === 'materia' && Number(e.counts[p.code] || 0) > 0);
+      state.envioGroup = (!hasTerm && hasMat) ? 'materia' : 'terminados';
+      state.undoStack = [];
+      state.search = '';
+      state.activeCategory = 'Todas';
+      saveCurrent();
+      state.screen = 'count';
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-envio-clear]').forEach(btn => {
+    btn.onclick = () => {
+      const dest = btn.getAttribute('data-envio-clear');
+      if (confirm(`¿Quitar todo el envío cargado para ${dest}?`)) {
+        delete state.envios[dest];
+        saveCurrent();
+        toast('Envío quitado');
+        render();
+      }
+    };
+  });
+
+  document.getElementById('envioDoneBtn').onclick = () => {
     state.screen = 'summary';
     state.viewingHistoryId = null;
     render();
@@ -1352,6 +1546,26 @@ function renderAskWaste() {
 }
 
 /* ---------------- Summary screen ---------------- */
+
+// Arma la lista plana de productos enviados: una fila por producto y destino,
+// ordenada por sucursal destino, después terminados/materia prima y categoría.
+function buildEnvioItems(envios) {
+  const out = [];
+  const destOrder = LOCATIONS.map(l => l.name);
+  Object.keys(envios || {})
+    .sort((a, b) => destOrder.indexOf(a) - destOrder.indexOf(b))
+    .forEach(dest => {
+      const counts = (envios[dest] && envios[dest].counts) || {};
+      const items = PRODUCTS
+        .filter(p => Number(counts[p.code] || 0) > 0)
+        .map(p => ({ ...p, qty: counts[p.code], destino: dest, grupo: envioGroupOf(p.category) || 'terminados' }));
+      items.sort((a, b) =>
+        (ENVIO_GROUP_ORDER.indexOf(a.grupo) - ENVIO_GROUP_ORDER.indexOf(b.grupo)) ||
+        (CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category)));
+      out.push(...items);
+    });
+  return out;
+}
 
 function renderSummary() {
   const isHistory = !!state.viewingHistoryId;
@@ -1362,6 +1576,8 @@ function renderSummary() {
         mode: state.mode,
         stockCounts: state.stockCounts,
         wasteCounts: state.wasteCounts,
+        wasteNotes: state.wasteNotes,
+        envios: state.envios,
         generalNote: state.generalNote,
         finishedAt: new Date().toISOString(),
         generatedBy: state.currentUser,
@@ -1373,6 +1589,9 @@ function renderSummary() {
   const wasteItems = PRODUCTS
     .filter(p => Number((data.wasteCounts || {})[p.code] || 0) > 0)
     .map(p => ({ ...p, qty: data.wasteCounts[p.code], note: (data.wasteNotes || {})[p.code] || '' }));
+
+  const envioItems = buildEnvioItems(data.envios);
+  const hasEnvios = envioItems.length > 0;
 
   const totalStockUnits = stockItems.reduce((sum, p) => sum + Number(p.qty), 0);
   const hasWaste = wasteItems.length > 0;
@@ -1430,6 +1649,22 @@ function renderSummary() {
     <div class="summary-table">${buildRows(wasteItems, true)}</div>
   ` : '';
 
+  const envioDests = [...new Set(envioItems.map(p => p.destino))];
+  const enviosBlockHtml = hasEnvios ? `
+    <div class="section-label" style="margin-top:18px;">🚚 Envíos a otras sucursales</div>
+    ${envioDests.map(dest => {
+      const items = envioItems.filter(p => p.destino === dest);
+      return `
+      <div class="section-label" style="margin-top:10px;">→ ${escapeHtml(dest)} · ${items.length} producto${items.length === 1 ? '' : 's'} · ${fmtMoney(valorize(items))}</div>
+      ${ENVIO_GROUP_ORDER.map(g => {
+        const gi = items.filter(p => p.grupo === g);
+        if (!gi.length) return '';
+        return `<div class="empty-hint" style="text-align:left;margin:6px 0 4px;font-weight:700;">${ENVIO_GROUPS[g].label}</div>
+          <div class="summary-table">${buildRows(gi, false)}</div>`;
+      }).join('')}`;
+    }).join('')}
+  ` : '';
+
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
@@ -1461,6 +1696,7 @@ function renderSummary() {
       <div class="section-label">Stock — detalle</div>
       <div class="summary-table">${buildRows(stockItems, false) || '<div class="empty-hint">No hay productos contados.</div>'}</div>
       ${wasteBlockHtml}
+      ${enviosBlockHtml}
     </div>
     <div class="footer-bar">
       ${isHistory ? '' : '<button class="btn-secondary" id="editBtn" style="flex:1;">Seguir contando</button>'}
@@ -1470,21 +1706,24 @@ function renderSummary() {
 
   document.getElementById('backBtn').onclick = () => {
     if (isHistory) { state.viewingHistoryId = null; state.screen = 'location'; }
-    else { state.screen = hasWaste ? 'count' : 'askWaste'; if (hasWaste) state.stage = 'desperdicio'; }
+    else { state.screen = 'envioDest'; }
     render();
   };
 
   const editBtn = document.getElementById('editBtn');
   if (editBtn) editBtn.onclick = () => {
+    state.search = '';
+    state.activeCategory = 'Todas';
     state.screen = 'count';
     state.stage = hasWaste ? 'desperdicio' : 'stock';
     render();
   };
 
-  document.getElementById('shareBtn').onclick = () => shareCount(data, stockItems, wasteItems, isHistory);
+  document.getElementById('shareBtn').onclick = () => shareCount(data, stockItems, wasteItems, isHistory, envioItems);
 }
 
-async function shareCount(data, stockItems, wasteItems, isHistory) {
+async function shareCount(data, stockItems, wasteItems, isHistory, envioItems) {
+  envioItems = envioItems || [];
   const loc = sanitizeForFilename(data.location);
   const dateStr = fmtDateShort(data.finishedAt);
   const modeLabel = data.mode === 'semanal' ? 'Semanal' : 'Mensual';
@@ -1553,6 +1792,36 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
       XLSX.utils.book_append_sheet(wb, wsWaste, 'Desperdicio');
     }
 
+    if (envioItems.length > 0) {
+      // Pestaña Envíos: una fila por producto y sucursal destino, con subtotal
+      // por destino y un total general al final. Se valoriza con el mismo
+      // precio que el resto del Excel (el de la sucursal de origen).
+      const envioHeader = ['Código', 'Producto', 'Categoría', 'Tipo', 'Unidad de medida', 'Cantidad enviada', 'Precio unitario (€)', 'Subtotal (€)', 'Origen', 'Destino'];
+      const envioRows = [];
+      const dests = [...new Set(envioItems.map(p => p.destino))];
+      dests.forEach(dest => {
+        const items = envioItems.filter(p => p.destino === dest);
+        items.forEach(p => {
+          const price = unitPriceOf(p);
+          const qty = Number(p.qty);
+          envioRows.push([p.code, p.name, p.category, ENVIO_GROUPS[p.grupo].label, p.unit, qty,
+            price === null ? '' : price, price === null ? '' : Math.round(qty * price * 100) / 100, data.location, dest]);
+        });
+        const sub = new Array(envioHeader.length).fill('');
+        sub[5] = `TOTAL → ${dest}`;
+        sub[7] = Math.round(totalValorizado(items) * 100) / 100;
+        envioRows.push(sub);
+        envioRows.push([]);
+      });
+      const grand = new Array(envioHeader.length).fill('');
+      grand[5] = 'TOTAL ENVÍOS';
+      grand[7] = Math.round(totalValorizado(envioItems) * 100) / 100;
+      envioRows.push(grand);
+      const wsEnvios = XLSX.utils.aoa_to_sheet([...infoRows('Envíos', envioItems), envioHeader, ...envioRows]);
+      wsEnvios['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, wsEnvios, 'Envíos');
+    }
+
     const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const file = new File([blob], filename, { type: blob.type });
@@ -1562,7 +1831,7 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
       try {
         await navigator.share({
           title: filename,
-          text: `Conteo ${modeLabel} de ${data.location}${wasteItems.length ? ' (Stock + Desperdicio)' : ' (Stock)'} · Generado por ${data.generatedBy || '—'}`,
+          text: `Conteo ${modeLabel} de ${data.location} (Stock${wasteItems.length ? ' + Desperdicio' : ''}${envioItems.length ? ' + Envíos' : ''}) · Generado por ${data.generatedBy || '—'}`,
           files: [file],
         });
         usedShare = true;
@@ -1606,6 +1875,8 @@ function finalizeIfNeeded(data) {
     generalNote: state.generalNote,
     stockCounts: data.stockCounts,
     wasteCounts: data.wasteCounts,
+    envios: data.envios || {},
+    itemCountEnvios: totalEnvioItems(data.envios),
     itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,
     itemCountWaste: Object.values(data.wasteCounts || {}).filter(q => Number(q) > 0).length,
   });
