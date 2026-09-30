@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-cache-v38';
+const CACHE_NAME = 'inventario-cache-v39';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const FILES_TO_CACHE = [
   './loc-madrid.jpg',
   './loc-malaga1.jpg',
   './loc-fabrica.jpg',
+  './loc-valencia.jpg',
 ];
 
 // Archivos que cambian cuando subís una actualización: siempre se piden

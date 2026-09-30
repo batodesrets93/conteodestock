@@ -172,7 +172,7 @@ function priceFieldForLocation(location) {
 }
 
 function priceLabelForLocation(location) {
-  return priceFieldForLocation(location) === 'price2' ? 'Precio 2 (BCN)' : 'Precio 1 (Madrid / Málaga)';
+  return priceFieldForLocation(location) === 'price2' ? 'Precio 2 (BCN)' : 'Precio 1 (Madrid / Málaga / Valencia)';
 }
 
 // En Madrid y Málaga el "Peso prom. (kg)" de cada helado viene precargado
@@ -937,7 +937,7 @@ function buildProductListHtml(filtered) {
             </div>
             <div class="helado-field">
               <span class="helado-label">Peso prom. (kg)</span>
-              <input type="text" inputmode="decimal" class="helado-input${bloqueaPeso ? ' helado-input-locked' : ''}" data-pesoprom="${p.code}" value="${pesoProm ? formatQty(pesoProm) : ''}" placeholder="Ej: 3,4" ${bloqueaPeso ? 'readonly title="Peso precargado para Madrid/Málaga, no editable"' : ''}>
+              <input type="text" inputmode="decimal" class="helado-input${bloqueaPeso ? ' helado-input-locked' : ''}" data-pesoprom="${p.code}" value="${pesoProm ? formatQty(pesoProm) : ''}" placeholder="Ej: 3,4" ${bloqueaPeso ? 'readonly title="Peso precargado para Madrid/Málaga/Valencia, no editable"' : ''}>
               ${sinPesoAvisoHtml}
             </div>
             <div class="helado-eq">= ${formatQty(subtotal)} kg</div>
@@ -1887,7 +1887,7 @@ function finalizeIfNeeded(data) {
 }
 
 /* ---------------- Precios (solo batodesrets) ----------------
-   Pantalla para ver y editar Precio 1 (Madrid/Málaga) y Precio 2 (BCN) de
+   Pantalla para ver y editar Precio 1 (Madrid/Málaga/Valencia) y Precio 2 (BCN) de
    cada producto. Los cambios se guardan como "override" en este celular y
    quedan anotados en un historial (también local). Para que el precio
    nuevo llegue a TODOS los celulares hay que descargar el products.js
@@ -1937,7 +1937,7 @@ function buildPriceListHtml(filtered) {
         </div>
         <div class="helado-controls">
           <div class="helado-field">
-            <span class="helado-label">Precio 1 (Madrid/Málaga)</span>
+            <span class="helado-label">Precio 1 (Madrid/Málaga/Valencia)</span>
             <input type="text" inputmode="decimal" class="helado-input" data-price1="${p.code}" value="${escapeHtml(String(val1))}" placeholder="0,00">
           </div>
           <div class="helado-field">
@@ -1984,7 +1984,7 @@ function renderPrices() {
       <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <div style="text-align:center;">
         <h1>Precios</h1>
-        <div class="sub">Precio 1 = Madrid/Málaga · Precio 2 = BCN</div>
+        <div class="sub">Precio 1 = Madrid/Málaga/Valencia · Precio 2 = BCN</div>
       </div>
       <button class="icon-btn" id="priceHistoryBtn" title="Historial de cambios">🕘</button>
     </div>
@@ -2115,7 +2115,7 @@ function renderPriceHistory() {
     <div class="history-item">
       <div class="info">
         <b>${escapeHtml(h.name)} <span style="color:var(--ink-soft);font-weight:400;">#${h.code}</span></b>
-        <span>${h.field === 'price1' ? 'Precio 1 (Madrid/Málaga)' : 'Precio 2 (BCN)'} · ${h.oldValue === null || h.oldValue === undefined ? 'sin precio' : formatQty(h.oldValue)} → <b>${formatQty(h.newValue)}</b> · ${escapeHtml(h.user || '—')} · ${fmtDate(h.at)}</span>
+        <span>${h.field === 'price1' ? 'Precio 1 (Madrid/Málaga/Valencia)' : 'Precio 2 (BCN)'} · ${h.oldValue === null || h.oldValue === undefined ? 'sin precio' : formatQty(h.oldValue)} → <b>${formatQty(h.newValue)}</b> · ${escapeHtml(h.user || '—')} · ${fmtDate(h.at)}</span>
       </div>
     </div>
   `).join('');
@@ -2147,7 +2147,7 @@ function downloadPriceHistoryExcel(hist) {
   const header = ['Fecha', 'Usuario', 'Código', 'Producto', 'Lista de precio', 'Valor anterior', 'Valor nuevo'];
   const rows = hist.map(h => [
     fmtDate(h.at), h.user || '—', h.code, h.name,
-    h.field === 'price1' ? 'Precio 1 (Madrid/Málaga)' : 'Precio 2 (BCN)',
+    h.field === 'price1' ? 'Precio 1 (Madrid/Málaga/Valencia)' : 'Precio 2 (BCN)',
     (h.oldValue === null || h.oldValue === undefined) ? '' : h.oldValue,
     h.newValue,
   ]);
