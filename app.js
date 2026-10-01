@@ -415,16 +415,31 @@ function detectUnitWeight(name, unit) {
   return value;
 }
 
-// Categorías visibles según el modo de conteo elegido (semanal/mensual).
-function visibleCategories() {
-  if (state.stage === 'envio') return CATEGORIES.filter(c => envioGroupOf(c) === state.envioGroup);
-  return state.mode === 'semanal' ? CATEGORIES.filter(c => SEMANAL_CATEGORIES.includes(c)) : CATEGORIES;
+// ¿Este producto se cuenta en esta sucursal?
+// - products.js: locations: [...] => el producto existe SOLO en esas sucursales.
+// - config.js: hiddenProducts: [...] en la sucursal => esos códigos no se muestran ahí.
+function productAvailableAt(p, location) {
+  if (Array.isArray(p.locations) && p.locations.length && !p.locations.includes(location)) return false;
+  const loc = LOCATIONS.find(l => l.name === location);
+  if (loc && Array.isArray(loc.hiddenProducts) && loc.hiddenProducts.some(c => String(c) === String(p.code))) return false;
+  return true;
 }
 
-// Productos habilitados según el modo (para el total del badge, etc.)
+// Categorías visibles según el modo de conteo elegido (semanal/mensual).
+// Se ocultan las categorías que quedan sin productos en esta sucursal.
+function visibleCategories() {
+  const base = state.stage === 'envio'
+    ? CATEGORIES.filter(c => envioGroupOf(c) === state.envioGroup)
+    : (state.mode === 'semanal' ? CATEGORIES.filter(c => SEMANAL_CATEGORIES.includes(c)) : CATEGORIES);
+  const prods = productsForMode();
+  return base.filter(c => prods.some(p => p.category === c));
+}
+
+// Productos habilitados según el modo y la sucursal (para el total del badge, etc.)
 function productsForMode() {
-  if (state.stage === 'envio') return PRODUCTS.filter(p => envioGroupOf(p.category) !== null);
-  return state.mode === 'semanal' ? PRODUCTS.filter(p => SEMANAL_CATEGORIES.includes(p.category)) : PRODUCTS;
+  const here = PRODUCTS.filter(p => productAvailableAt(p, state.location));
+  if (state.stage === 'envio') return here.filter(p => envioGroupOf(p.category) !== null);
+  return state.mode === 'semanal' ? here.filter(p => SEMANAL_CATEGORIES.includes(p.category)) : here;
 }
 
 function countedItemsCount() {
@@ -2082,7 +2097,9 @@ function buildProductsJsFileText() {
     const avgW = (p.avgWeight === null || p.avgWeight === undefined) ? 'null' : p.avgWeight;
     const p1s = (price1 === null || price1 === undefined) ? 'null' : price1;
     const p2s = (price2 === null || price2 === undefined) ? 'null' : price2;
-    lines.push(`  { code: ${p.code}, name: '${nameEsc}', category: '${p.category}', unit: '${p.unit}', avgWeight: ${avgW}, price1: ${p1s}, price2: ${p2s} },`);
+    const locs = (Array.isArray(p.locations) && p.locations.length)
+      ? `, locations: [${p.locations.map(l => `'${String(l).replace(/'/g, "\\'")}'`).join(', ')}]` : '';
+    lines.push(`  { code: ${p.code}, name: '${nameEsc}', category: '${p.category}', unit: '${p.unit}', avgWeight: ${avgW}, price1: ${p1s}, price2: ${p2s}${locs} },`);
   });
   lines.push('];');
   lines.push('');

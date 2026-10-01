@@ -1,6 +1,6 @@
 // Listado de productos - generado desde Listado_productos_Stock.xlsx
 // Pestañas usadas: Productos terminados, Pasteleria, VARIOS
-// Total productos: 371  |  Códigos autogenerados (90001+): 127
+// Total productos: 382  |  Códigos autogenerados (90001+): 133
 //
 // price1 = precio de venta en Madrid y Málaga · price2 = precio de venta en BCN
 // Cargados desde "listas_de_precios_terminados_-_MP_-_varios.xlsx" cruzando por
@@ -114,6 +114,7 @@ const PRODUCTS = [
   { code: 2129, name: 'S.PEREGRINO 500 - PLASTICO', category: 'BEBIDAS', unit: 'Unidad', avgWeight: null, price1: 0.88, price2: 0.88 },
   { code: 2130, name: 'S.PEREGRINO 500 - VIDRIO', category: 'BEBIDAS', unit: 'Unidad', avgWeight: null, price1: 0.9, price2: 0.9 },
   { code: 2284, name: 'Agua Viladrau 500ml - PLASTICO', category: 'BEBIDAS', unit: 'Unidad', avgWeight: null, price1: 0.26, price2: 0.26 },
+  { code: 2414, name: 'AGUA VILADRAU 1.5LT', category: 'BEBIDAS', unit: 'Unidad', avgWeight: null, price1: 0.61, price2: 0.61, locations: ['BCN 2 - Moon'] },
   { code: 2088, name: 'VASO MILKSHAKE', category: 'MILK SHAKE', unit: 'Unidad', avgWeight: null, price1: 0.122, price2: 0.122 },
   { code: 2089, name: 'TAPA MILKSHAKE', category: 'MILK SHAKE', unit: 'Unidad', avgWeight: null, price1: 0.026, price2: 0.026 },
   { code: 2295, name: 'VASO 100 ML - CAFÉ - MODELO EXPRESS UNA PARED', category: 'CAFÉ', unit: 'Unidad', avgWeight: null, price1: 0.1, price2: 0.1 },
@@ -335,6 +336,11 @@ const PRODUCTS = [
   { code: 90073, name: 'CAMISA HOMBRE L', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
   { code: 90074, name: 'CAMISA HOMBRE XL', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
   { code: 90075, name: 'CAMISA HOMBRE XXL', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
+  { code: 90129, name: 'CAMISA UNISEX S', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['BCN 2 - Moon'] },
+  { code: 90130, name: 'CAMISA UNISEX M', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['BCN 2 - Moon'] },
+  { code: 90131, name: 'CAMISA UNISEX L', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['BCN 2 - Moon'] },
+  { code: 90132, name: 'CAMISA UNISEX XL', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['BCN 2 - Moon'] },
+  { code: 90133, name: 'CAMISA UNISEX XXL', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['BCN 2 - Moon'] },
   { code: 90076, name: 'PANTALÓN 36', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
   { code: 90077, name: 'PANTALÓN 38', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
   { code: 90078, name: 'PANTALÓN 40', category: 'UNIFORMES AZULES DESPACHANTE BARCELONA', unit: 'Unidad', avgWeight: null, price1: null, price2: null },

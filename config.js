@@ -2,9 +2,30 @@
 // Cada una puede tener una foto (archivo de imagen subido junto a la app,
 // en la raíz del repo) para identificarla más fácil al elegir sucursal.
 // Si "photo" es null, se muestra un ícono genérico en su lugar.
+// hiddenProducts (opcional): códigos de productos que no se muestran para
+// contar en esa sucursal. Para que un producto aparezca SOLO en algunas
+// sucursales, en products.js se le agrega locations: ['Nombre sucursal'].
 const LOCATIONS = [
   { name: 'BCN 1 - Space', photo: 'loc-bcn1.jpg' },
-  { name: 'BCN 2 - Moon', photo: 'loc-bcn2.jpg' },
+  {
+    name: 'BCN 2 - Moon', photo: 'loc-bcn2.jpg',
+    // Productos (por código) que NO se cuentan en esta sucursal.
+    hiddenProducts: [
+      // Cannolis
+      2386, 2384, 2388, 2385, 2387,
+      // Vaschettas grande / pequeña / descartable
+      90002, 90003, 90004,
+      // Bebidas: Sprite lata, S. Pellegrino 500 vidrio
+      90005, 2130,
+      // Caja pastelería, vasos plástico pastelería
+      2291, 90016,
+      // Limpieza: producto WC, Ecogras, V75 ambientador, valletas verdes,
+      // trapos para cristales, Speed Natur, For Chlor
+      90028, 90029, 90031, 90038, 90040, 90045, 90046,
+      // Uniformes azules: camisas por género (se reemplazan por unisex)
+      90066, 90067, 90068, 90069, 90070, 90071, 90072, 90073, 90074, 90075,
+    ],
+  },
   { name: 'Madrid', photo: 'loc-madrid.jpg' },
   { name: 'Málaga 1', photo: 'loc-malaga1.jpg' },
   { name: 'Valencia', photo: 'loc-valencia.jpg' },
