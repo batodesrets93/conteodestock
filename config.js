@@ -66,6 +66,7 @@ const USERS = [
   { username: 'julian', password: '123456', canDelete: false, canEditPrices: false },
   { username: 'malaga', password: '123456', canDelete: false, canEditPrices: false },
   { username: 'fabrica', password: '123456', canDelete: false, canEditPrices: false },
+  { username: 'sergio S', password: '123456', canDelete: false, canEditPrices: false },
 ];
 
 if (typeof module !== 'undefined') { module.exports = { LOCATIONS, USERS }; }
