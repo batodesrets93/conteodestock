@@ -1,6 +1,6 @@
 // Listado de productos - generado desde Listado_productos_Stock.xlsx
 // Pestañas usadas: Productos terminados, Pasteleria, VARIOS
-// Total productos: 382  |  Códigos autogenerados (90001+): 133
+// Total productos: 407  |  Códigos autogenerados (90001+): 158
 //
 // price1 = precio de venta en Madrid y Málaga · price2 = precio de venta en BCN
 // Cargados desde "listas_de_precios_terminados_-_MP_-_varios.xlsx" cruzando por
@@ -393,6 +393,31 @@ const PRODUCTS = [
   { code: 90125, name: 'PANTALÓN XL', category: 'UNIFORMES LABORATORIO', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
   { code: 90126, name: 'GORRO', category: 'UNIFORMES LABORATORIO', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
   { code: 90127, name: 'DELANTAL', category: 'UNIFORMES LABORATORIO', unit: 'Unidad', avgWeight: null, price1: null, price2: null },
+  { code: 90134, name: 'DULCE DE LECHE FRASCOS LOCALES', category: 'DULCE DE LECHES', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90135, name: 'LECHE ENTERA UHT', category: 'LACTEOS', unit: 'Litro', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90136, name: 'PASTA PRALINE', category: 'SALSAS Y VARIEGATOS BABBI', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90137, name: 'PASTA CARAMEL SPECIAL', category: 'SALSAS Y VARIEGATOS BABBI', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90138, name: 'GOLOSA PEANUT BUTTER B-FREE', category: 'SALSAS Y VARIEGATOS BABBI', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90139, name: 'JOYCREAM WAFERNUT CLAIR', category: 'SALSAS Y VARIEGATOS IRCA', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90140, name: 'PASTA SPECULEUOS CONCENTRADA', category: 'SALSAS Y VARIEGATOS MEC 3', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90141, name: 'PASTA ZABAIONE', category: 'SALSAS Y VARIEGATOS MEC 3', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90142, name: 'COOKIES CARAMEL', category: 'SALSAS Y VARIEGATOS MEC 3', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90143, name: 'COOKIES BLACK', category: 'SALSAS Y VARIEGATOS MEC 3', unit: 'Kg', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90144, name: 'ESTENCIL ENZO', category: 'MOLDES/SELLOS LABORATORIO', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90145, name: 'PLACA CHOCOLATE DUBAI', category: 'MOLDES/SELLOS LABORATORIO', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90146, name: 'MOLDE COLICEO', category: 'MOLDES/SELLOS LABORATORIO', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90147, name: 'CAJAS HELADO VASQUETAS GRANDE', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90148, name: 'CAJAS ICEPOP', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90149, name: 'VASQUETAS ISOTERMICA GRANDE XL ERREME', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90150, name: 'VASQUETAS ISOTERMICA GRANDE XL ALCAS', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90151, name: 'VASQUETAS DESCARTABLES L ALCAS', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90153, name: 'BOLSAS DE POLIETILENO PARA HELADOS', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90154, name: 'BOBINA FLOWPACK 270MM', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90155, name: 'BOBINA FLOWPACK 220MM', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90156, name: 'PALITOS ICEPOP LUCCIANO\'S', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90157, name: 'VASQUETAS ACRILICO', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90158, name: 'CAJAS DE VASQUETAS CHICA', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
+  { code: 90161, name: 'VASOS TERMICOS ROSA MANIJA', category: 'PACKAGING', unit: 'Unidad', avgWeight: null, price1: null, price2: null, locations: ['Fabrica BCN'] },
 ];
 
 const CATEGORIES = [
@@ -436,6 +461,7 @@ const CATEGORIES = [
   'UNIFORMES DESPACHANTE FRANQUICIAS',
   'BUZOS NEGROS FRANQUICIAS',
   'UNIFORMES LABORATORIO',
+  'PACKAGING',
 ];
 
 if (typeof module !== 'undefined') { module.exports = { PRODUCTS, CATEGORIES }; }
