@@ -28,7 +28,16 @@ const LOCATIONS = [
   },
   { name: 'Madrid', photo: 'loc-madrid.jpg' },
   { name: 'Málaga 1', photo: 'loc-malaga1.jpg' },
-  { name: 'Valencia', photo: 'loc-valencia.jpg' },
+  {
+    name: 'Valencia', photo: 'loc-valencia.jpg',
+    // Productos (por código) que NO se cuentan en esta sucursal.
+    hiddenProducts: [
+      // Cucuruchos anteriores (reemplazados por los conos de la planilla de varios)
+      2170, 2171, 2172, 2380, 2173, 2174, 2282,
+      // Copas chica/media/grande/XL (reemplazadas por Tarrinas Printedcup S/M/L/XL)
+      2192, 2193, 2194, 2195,
+    ],
+  },
   { name: 'Fabrica BCN', photo: 'loc-fabrica.jpg' },
 ];
 
